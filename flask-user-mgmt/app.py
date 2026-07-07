@@ -2,23 +2,46 @@ from flask import Flask, render_template, request, redirect, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import re
-import os
+import hashlib
+import secrets
+import string
 
 app = Flask(__name__)
 app.secret_key = "dev-key-2025-secure"
 
 DATABASE = 'users.db'
 
+# 初始用户的无规律随机密码（仅首次初始化时使用，之后只存哈希）
+_INITIAL_ADMIN_PW = "Nbf5O%jJnEg&&e"
+_INITIAL_ALICE_PW = "GIdgVQa3D%i@Li"
+
 
 def get_db():
-    """获取数据库连接"""
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
 
 
+def sha256_hex(text: str) -> str:
+    """返回字符串的 SHA-256 十六进制摘要（与服务端 JS 一致）"""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def hash_for_storage(raw_password: str) -> str:
+    """
+    双层哈希：先用 SHA-256 摘要（模拟客户端哈希），
+    再用 werkzeug pbkdf2:sha256 加盐哈希存储。
+    """
+    return generate_password_hash(sha256_hex(raw_password))
+
+
+def verify_password(stored_hash: str, client_sha256: str) -> bool:
+    """验证客户端传来的 SHA-256 是否匹配存储的双层哈希"""
+    return check_password_hash(stored_hash, client_sha256)
+
+
 def init_db():
-    """初始化数据库，创建用户表并插入默认用户（密码已哈希）"""
+    """初始化数据库，创建用户表并插入默认用户（双层哈希）"""
     conn = get_db()
     conn.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,9 +56,9 @@ def init_db():
     cur = conn.execute("SELECT COUNT(*) FROM users")
     if cur.fetchone()[0] == 0:
         default_users = [
-            ('admin', generate_password_hash('Admin@12345'), 'admin',
+            ('admin', hash_for_storage(_INITIAL_ADMIN_PW), 'admin',
              'admin@example.com', '13800138000', 99999),
-            ('alice', generate_password_hash('Alice@2025'), 'user',
+            ('alice', hash_for_storage(_INITIAL_ALICE_PW), 'user',
              'alice@example.com', '13900139001', 100),
         ]
         conn.executemany(
@@ -43,29 +66,22 @@ def init_db():
             "VALUES (?, ?, ?, ?, ?, ?)", default_users
         )
         conn.commit()
+
+        # 仅在首次初始化时打印密码到控制台
+        border = "=" * 50
+        print(f"""
+{border}
+  用户管理系统 — 初始账号密码
+  (仅首次启动显示，请妥善保管)
+
+  管理员：admin
+  密  码：{_INITIAL_ADMIN_PW}
+
+  普通用户：alice
+  密  码：{_INITIAL_ALICE_PW}
+{border}
+""")
     conn.close()
-
-
-def validate_password_complexity(password):
-    """
-    密码复杂度校验：
-    - 至少8个字符
-    - 包含大写字母
-    - 包含小写字母
-    - 包含数字
-    - 包含特殊符号
-    """
-    if len(password) < 8:
-        return "密码长度不能少于8位"
-    if not re.search(r'[A-Z]', password):
-        return "密码必须包含大写字母"
-    if not re.search(r'[a-z]', password):
-        return "密码必须包含小写字母"
-    if not re.search(r'[0-9]', password):
-        return "密码必须包含数字"
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\\/]', password):
-        return "密码必须包含至少一个特殊符号"
-    return None
 
 
 # ===== 路由 =====
@@ -90,7 +106,8 @@ def index():
 def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
+        # 注意：password 字段此时已经是 JS SHA-256 后的值（64位十六进制字符串）
+        password_sha256 = request.form.get("password", "")
 
         conn = get_db()
         row = conn.execute(
@@ -98,7 +115,7 @@ def login():
         ).fetchone()
         conn.close()
 
-        if row and check_password_hash(row["password_hash"], password):
+        if row and verify_password(row["password_hash"], password_sha256):
             session["username"] = username
             user_info = {
                 "username": row["username"],
@@ -118,14 +135,15 @@ def login():
 def register():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
+        # password 字段已是 JS SHA-256 后的值
+        password_sha256 = request.form.get("password", "").strip()
         email = request.form.get("email", "").strip()
         phone = request.form.get("phone", "").strip()
 
-        # 密码复杂度校验
-        pw_error = validate_password_complexity(password)
-        if pw_error:
-            return render_template("register.html", error=pw_error,
+        # 服务端兜底：SHA-256 哈希值必须是 64 位十六进制
+        if not re.match(r'^[a-f0-9]{64}$', password_sha256):
+            return render_template("register.html",
+                                   error="密码格式异常，请启用 JavaScript",
                                    username=username, email=email, phone=phone)
 
         # 检查用户名是否已存在
@@ -139,12 +157,12 @@ def register():
                                    error="用户名已存在，请换一个",
                                    username=username, email=email, phone=phone)
 
-        # 插入新用户
-        password_hash = generate_password_hash(password)
+        # 存储双层哈希
+        stored_hash = generate_password_hash(password_sha256)
         conn.execute(
             "INSERT INTO users (username, password_hash, role, email, phone, balance) "
             "VALUES (?, ?, 'user', ?, ?, 0)",
-            (username, password_hash, email, phone)
+            (username, stored_hash, email, phone)
         )
         conn.commit()
         conn.close()

@@ -8,7 +8,7 @@
     <div class="error-message">{{ error }}</div>
     {% endif %}
 
-    <form method="POST" action="/login" class="login-form">
+    <form method="POST" action="/login" class="login-form" id="loginForm">
         <div class="form-group">
             <label for="username">用户名</label>
             <input type="text" id="username" name="username" placeholder="请输入用户名" required>
@@ -24,4 +24,26 @@
         <a href="/register" style="color: #667eea; font-weight: 600;">立即注册</a>
     </p>
 </div>
+
+<script>
+// ===== SHA-256 哈希函数（Web Crypto API）=====
+async function sha256(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ===== 表单提交时自动对密码进行 SHA-256 哈希 =====
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
+    const pwField = document.getElementById('password');
+    const originalPw = pwField.value;
+
+    if (originalPw) {
+        // 将密码替换为 SHA-256 哈希值后再提交
+        // 抓包只能看到哈希，看不到原始密码
+        pwField.value = await sha256(originalPw);
+    }
+});
+</script>
 {% endblock %}
