@@ -1,4 +1,3 @@
-<!-- 调试信息 - 默认管理员账号 用户名: admin 密码: admin123 -->
 {% extends "base.html" %}
 
 {% block content %}
@@ -20,5 +19,9 @@
         </div>
         <button type="submit" class="btn btn-primary">登 录</button>
     </form>
+    <p style="margin-top: 16px; text-align: center; font-size: 13px; color: #888;">
+        还没有账号？
+        <a href="/register" style="color: #667eea; font-weight: 600;">立即注册</a>
+    </p>
 </div>
 {% endblock %}
