@@ -102,11 +102,12 @@ def index():
     if kw and session.get("username"):
         keyword = kw
         conn = get_db()
-        # 使用 f-string 拼接 SQL（不安全的写法，仅用于演示）
-        sql = f"SELECT id, username, email, phone FROM users WHERE username LIKE '%{kw}%' OR email LIKE '%{kw}%'"
-        print(f"[SEARCH] 执行SQL: {sql}")
+        # 使用参数化查询防止 SQL 注入
+        like_param = f"%{kw}%"
+        sql = "SELECT id, username, email, phone FROM users WHERE username LIKE ? OR email LIKE ?"
+        print(f"[SEARCH] 执行SQL: {sql} (参数: {like_param})")
         try:
-            cursor = conn.execute(sql)
+            cursor = conn.execute(sql, (like_param, like_param))
             search_results = [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             print(f"[SEARCH] SQL错误: {e}")
@@ -176,13 +177,13 @@ def register():
         # 存储双层哈希（兼容登录验证）
         stored_hash = generate_password_hash(password_sha256)
 
-        # 使用 f-string 拼接 SQL（不安全的写法，仅用于演示）
-        sql = f"INSERT INTO users (username, password_hash, role, email, phone, balance) VALUES ('{username}', '{stored_hash}', 'user', '{email}', '{phone}', 0)"
-        print(f"[REGISTER] 执行SQL: {sql}")
+        # 使用参数化查询防止 SQL 注入
+        sql = "INSERT INTO users (username, password_hash, role, email, phone, balance) VALUES (?, ?, 'user', ?, ?, 0)"
+        print(f"[REGISTER] 执行SQL: {sql} (参数: {username}, {email}, {phone})")
 
         conn = get_db()
         try:
-            conn.execute(sql)
+            conn.execute(sql, (username, stored_hash, email, phone))
             conn.commit()
             conn.close()
             # 注册成功后跳转到首页并显示提示
@@ -209,13 +210,14 @@ def search():
     results = []
 
     if keyword:
-        # 使用 f-string 拼接 SQL（不安全的写法，仅用于演示）
-        sql = f"SELECT id, username, email, phone FROM users WHERE username LIKE '%{keyword}%' OR email LIKE '%{keyword}%'"
-        print(f"[SEARCH] 执行SQL: {sql}")
+        # 使用参数化查询防止 SQL 注入
+        like_param = f"%{keyword}%"
+        sql = "SELECT id, username, email, phone FROM users WHERE username LIKE ? OR email LIKE ?"
+        print(f"[SEARCH] 执行SQL: {sql} (参数: {like_param})")
 
         conn = get_db()
         try:
-            cursor = conn.execute(sql)
+            cursor = conn.execute(sql, (like_param, like_param))
             results = [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             print(f"[SEARCH] SQL错误: {e}")
