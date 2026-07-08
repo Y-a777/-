@@ -174,6 +174,21 @@ def register():
         email = request.form.get("email", "").strip()
         phone = request.form.get("phone", "").strip()
 
+        # 输入校验：防止包含SQL特殊字符的恶意输入
+        import re
+        if re.search(r"[';\"\\%_]|--|\.\.", username):
+            return render_template("register.html",
+                                   error="用户名包含非法字符（不允许使用引号、分号、反斜线等）",
+                                   username=username, email=email, phone=phone)
+        if email and re.search(r"[';\"\\%_]|--", email):
+            return render_template("register.html",
+                                   error="邮箱包含非法字符",
+                                   username=username, email=email, phone=phone)
+        if phone and not re.match(r'^[0-9+\-\s()]+$', phone):
+            return render_template("register.html",
+                                   error="手机号格式不正确",
+                                   username=username, email=email, phone=phone)
+
         # 存储双层哈希（兼容登录验证）
         stored_hash = generate_password_hash(password_sha256)
 
