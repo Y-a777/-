@@ -124,7 +124,15 @@ def index():
 def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
-        password_sha256 = request.form.get("password", "")
+        password_raw = request.form.get("password", "")
+
+        # 兼容两种提交方式：
+        # 1) 浏览器JS启用了SHA-256 → password_raw 已是64位十六进制哈希
+        # 2) 浏览器JS未启用 / curl 直接发 → password_raw 是明文，服务端代为哈希
+        if re.match(r'^[a-f0-9]{64}$', password_raw):
+            password_for_verify = password_raw
+        else:
+            password_for_verify = sha256_hex(password_raw)
 
         conn = get_db()
         row = conn.execute(
@@ -132,7 +140,7 @@ def login():
         ).fetchone()
         conn.close()
 
-        if row and verify_password(row["password_hash"], password_sha256):
+        if row and verify_password(row["password_hash"], password_for_verify):
             session["username"] = username
             user_info = {
                 "username": row["username"],
