@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
+
+{% if msg %}
+<div class="card" style="background-color: #f0fff4; border: 1px solid #b2dfdb;">
+    <p style="color: #2e7d32; font-weight: 600; text-align: center;">{{ msg }}</p>
+</div>
+{% endif %}
+
 {% if user %}
 <div class="card">
     <h2>欢迎回来，{{ user.username }}！</h2>
@@ -17,6 +24,51 @@
         <a href="/logout" class="btn btn-primary">退出登录</a>
     </div>
 </div>
+
+<!-- 搜索功能 -->
+<div class="card">
+    <h2>用户搜索</h2>
+    <form method="GET" action="/" class="search-form">
+        <div class="search-box">
+            <input type="text" name="keyword" value="{{ keyword or '' }}"
+                   placeholder="搜索用户名或邮箱..." class="search-input" required>
+            <button type="submit" class="btn btn-primary">搜索</button>
+        </div>
+    </form>
+
+    {% if keyword is defined and keyword %}
+    <div style="margin-top: 20px;">
+        {% if search_results %}
+        <p style="margin-bottom: 12px; color: #555; font-size: 14px;">
+            找到 <strong>{{ search_results|length }}</strong> 条匹配结果
+        </p>
+        <table class="search-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>邮箱</th>
+                    <th>手机</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in search_results %}
+                <tr>
+                    <td>{{ row.id }}</td>
+                    <td>{{ row.username }}</td>
+                    <td>{{ row.email }}</td>
+                    <td>{{ row.phone }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: #999; text-align: center; padding: 20px 0;">无搜索结果</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
 {% else %}
 <div class="card">
     <h2>请先登录</h2>

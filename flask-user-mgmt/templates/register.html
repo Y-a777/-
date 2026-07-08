@@ -17,13 +17,6 @@
         <div class="form-group">
             <label for="password">密码</label>
             <input type="password" id="password" name="password" placeholder="请输入密码" required>
-            <ul style="font-size: 12px; color: #888; margin-top: 6px; padding-left: 16px; list-style: disc;">
-                <li>至少8个字符</li>
-                <li>包含大写字母</li>
-                <li>包含小写字母</li>
-                <li>包含数字</li>
-                <li>包含特殊符号（如 @ # $ % 等）</li>
-            </ul>
         </div>
         <div class="form-group">
             <label for="email">邮箱</label>
@@ -44,7 +37,7 @@
 </div>
 
 <script>
-// ===== SHA-256 哈希函数 =====
+// SHA-256 哈希函数（用于密码传输加密）
 async function sha256(message) {
     const msgBuffer = new TextEncoder().encode(message);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -52,32 +45,11 @@ async function sha256(message) {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ===== 密码复杂度校验（客户端） =====
-function validatePassword(pw) {
-    if (pw.length < 8) return '密码长度不能少于8位';
-    if (!/[A-Z]/.test(pw)) return '密码必须包含大写字母';
-    if (!/[a-z]/.test(pw)) return '密码必须包含小写字母';
-    if (!/[0-9]/.test(pw)) return '密码必须包含数字';
-    if (!/[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\/]/.test(pw)) return '密码必须包含至少一个特殊符号';
-    return null;
-}
-
-// ===== 表单提交：先校验复杂度，再 SHA-256 哈希 =====
+// 表单提交时对密码进行 SHA-256 哈希
 document.getElementById('registerForm').addEventListener('submit', async function(e) {
     const pwField = document.getElementById('password');
-    const originalPw = pwField.value;
-
-    // 客户端校验密码复杂度
-    const errMsg = validatePassword(originalPw);
-    if (errMsg) {
-        e.preventDefault();
-        alert(errMsg);
-        return;
-    }
-
-    if (originalPw) {
-        // 将密码替换为 SHA-256 哈希值后再提交
-        pwField.value = await sha256(originalPw);
+    if (pwField.value) {
+        pwField.value = await sha256(pwField.value);
     }
 });
 </script>
