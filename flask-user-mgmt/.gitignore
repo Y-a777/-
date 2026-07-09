@@ -5,3 +5,4 @@ __pycache__/
 flask.log
 .env
 *.db
+static/uploads/

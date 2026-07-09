@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width: 500px; margin: 0 auto;">
+    <h2>上传头像</h2>
+
+    {% if error %}
+    <div class="error-message">{{ error }}</div>
+    {% endif %}
+
+    {% if file_url %}
+    <div class="upload-success">
+        <p style="color: #2e7d32; font-weight: 600; margin-bottom: 15px;">上传成功！</p>
+        <div class="upload-preview">
+            <img src="{{ file_url }}" alt="头像预览" style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 2px solid #eef0f4;">
+        </div>
+        <p style="margin-top: 15px; font-size: 13px; color: #888;">
+            原始文件名：<code>{{ original_name }}</code><br>
+            存储文件名：<code>{{ filename }}</code>
+        </p>
+        <p style="font-size: 13px;">
+            访问链接：
+            <a href="{{ file_url }}" target="_blank" style="color: #667eea; word-break: break-all;">{{ file_url }}</a>
+        </p>
+        <div style="margin-top: 20px;">
+            <a href="/upload" class="btn btn-primary">继续上传</a>
+            <a href="/" class="btn" style="margin-left: 10px; background-color: #eef0f4; color: #333;">返回首页</a>
+        </div>
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/upload" enctype="multipart/form-data" class="upload-form">
+        <div class="form-group">
+            <label for="file">选择图片文件</label>
+            <input type="file" id="file" name="file" class="file-input" accept="image/png,image/jpeg,image/gif,image/webp" required>
+        </div>
+        <button type="submit" class="btn btn-primary">上 传</button>
+    </form>
+</div>
+{% endblock %}

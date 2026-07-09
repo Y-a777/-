@@ -1,14 +1,17 @@
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, send_from_directory, abort
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 import sqlite3
 import re
 import hashlib
 import secrets
 import string
 import os
+import uuid
 
 app = Flask(__name__)
 app.secret_key = "dev-key-2025-secure"
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
 # ===== 数据库 =====
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -239,6 +242,84 @@ def search():
         conn.close()
 
     return render_template("search.html", keyword=keyword, results=results)
+
+
+# ===== 头像上传功能（安全修复后）=====
+
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# 允许的图片扩展名
+ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+
+# 常见图片格式的文件头（magic bytes）
+MAGIC_BYTES = {
+    b'\x89PNG\r\n\x1a\n': '.png',
+    b'\xff\xd8\xff': '.jpg',
+    b'GIF87a': '.gif',
+    b'GIF89a': '.gif',
+    b'RIFF': '.webp',  # WEBP 以 RIFF 开头
+}
+
+
+def allowed_file(filename):
+    """检查文件扩展名是否在白名单内"""
+    _, ext = os.path.splitext(filename.lower())
+    return ext in ALLOWED_EXTENSIONS
+
+
+def validate_magic_bytes(data):
+    """验证文件头 magic bytes 是否为合法图片格式"""
+    for magic, ext in MAGIC_BYTES.items():
+        if data.startswith(magic):
+            return True
+    return False
+
+
+@app.route("/upload", methods=["GET", "POST"])
+def upload():
+    # 需要登录才能访问
+    if "username" not in session:
+        return redirect("/login")
+
+    if request.method == "POST":
+        file = request.files.get("file")
+        if not file or not file.filename:
+            return render_template("upload.html", error="请选择一个文件上传")
+
+        filename = file.filename
+
+        # ① 检查文件扩展名
+        if not allowed_file(filename):
+            return render_template("upload.html", error="不支持的文件类型，仅允许图片文件（png/jpg/gif/webp）")
+
+        # ② 检查文件内容（magic bytes），防止伪装扩展名
+        file.seek(0)
+        header = file.read(16)
+        if not validate_magic_bytes(header):
+            return render_template("upload.html", error="文件内容与图片格式不匹配，请上传有效图片")
+
+        # ③ 使用 UUID 重命名文件，防止路径遍历和同名覆盖
+        file.seek(0)
+        _, ext = os.path.splitext(filename.lower())
+        safe_filename = str(uuid.uuid4()) + ext
+        filepath = os.path.join(UPLOAD_FOLDER, safe_filename)
+        file.save(filepath)
+
+        file_url = f"/uploads/{safe_filename}"
+        return render_template("upload.html", file_url=file_url,
+                               filename=safe_filename, original_name=filename)
+
+    return render_template("upload.html")
+
+
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    """提供上传文件访问，设置 Content-Disposition 防止 XSS"""
+    return send_from_directory(UPLOAD_FOLDER, filename,
+                               mimetype='image/png',
+                               as_attachment=False,
+                               download_name=filename)
 
 
 if __name__ == "__main__":
