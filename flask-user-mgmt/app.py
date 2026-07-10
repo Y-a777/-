@@ -13,6 +13,24 @@ app = Flask(__name__)
 app.secret_key = "dev-key-2025-secure"
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
+
+def get_current_user_id():
+    """根据 session 中的 username 获取当前登录用户的 ID"""
+    username = session.get("username")
+    if not username:
+        return None
+    conn = get_db()
+    row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    return row["id"] if row else None
+
+
+@app.context_processor
+def inject_current_user():
+    """向所有模板注入当前登录用户信息（用于导航栏个人中心链接等）"""
+    user_id = get_current_user_id()
+    return dict(current_user_id=user_id)
+
 # ===== 数据库 =====
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE = os.path.join(BASE_DIR, 'data', 'users.db')
@@ -329,14 +347,11 @@ def profile():
     if "username" not in session:
         return redirect("/login")
 
-    user_id = request.args.get("user_id", "")
-    if not user_id or not user_id.isdigit():
-        return render_template("profile.html", error="无效的用户ID", user=None)
-
+    # 从 session 获取当前登录用户信息（BL-01 修复：不从 URL 参数获取 user_id）
     conn = get_db()
     row = conn.execute(
-        "SELECT id, username, email, phone, balance FROM users WHERE id = ?",
-        (int(user_id),)
+        "SELECT id, username, email, phone, balance FROM users WHERE username = ?",
+        (session["username"],)
     ).fetchone()
     conn.close()
 
@@ -351,24 +366,45 @@ def recharge():
     if "username" not in session:
         return redirect("/login")
 
-    user_id = request.form.get("user_id", "")
-    amount = request.form.get("amount", "0")
+    # BL-02 修复：不从表单获取 user_id，使用当前登录用户
+    current_user_id = get_current_user_id()
+    if current_user_id is None:
+        return redirect("/login")
 
-    if not user_id or not user_id.isdigit():
-        return redirect("/profile?user_id=" + user_id)
+    amount = request.form.get("amount", "0")
 
     try:
         amount_val = float(amount)
     except ValueError:
         amount_val = 0
 
+    # BL-03 修复：金额必须大于 0
+    if amount_val <= 0:
+        return render_template("profile.html",
+                               error="充值金额必须大于 0",
+                               user=get_current_user_profile())
+
     conn = get_db()
     conn.execute("UPDATE users SET balance = balance + ? WHERE id = ?",
-                 (amount_val, int(user_id)))
+                 (amount_val, current_user_id))
     conn.commit()
     conn.close()
 
-    return redirect(f"/profile?user_id={user_id}")
+    return redirect(f"/profile")
+
+
+def get_current_user_profile():
+    """获取当前登录用户的个人资料"""
+    username = session.get("username")
+    if not username:
+        return None
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, username, email, phone, balance FROM users WHERE username = ?",
+        (username,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 if __name__ == "__main__":
