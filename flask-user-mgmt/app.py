@@ -93,7 +93,7 @@ def index():
     if username:
         conn = get_db()
         row = conn.execute(
-            "SELECT username, role, email, phone, balance FROM users WHERE username = ?",
+            "SELECT id, username, role, email, phone, balance FROM users WHERE username = ?",
             (username,)
         ).fetchone()
         conn.close()
@@ -320,6 +320,55 @@ def uploaded_file(filename):
                                mimetype='image/png',
                                as_attachment=False,
                                download_name=filename)
+
+
+# ===== 个人中心与充值功能 =====
+
+@app.route("/profile", methods=["GET"])
+def profile():
+    if "username" not in session:
+        return redirect("/login")
+
+    user_id = request.args.get("user_id", "")
+    if not user_id or not user_id.isdigit():
+        return render_template("profile.html", error="无效的用户ID", user=None)
+
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, username, email, phone, balance FROM users WHERE id = ?",
+        (int(user_id),)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return render_template("profile.html", error="用户不存在", user=None)
+
+    return render_template("profile.html", user=dict(row))
+
+
+@app.route("/recharge", methods=["POST"])
+def recharge():
+    if "username" not in session:
+        return redirect("/login")
+
+    user_id = request.form.get("user_id", "")
+    amount = request.form.get("amount", "0")
+
+    if not user_id or not user_id.isdigit():
+        return redirect("/profile?user_id=" + user_id)
+
+    try:
+        amount_val = float(amount)
+    except ValueError:
+        amount_val = 0
+
+    conn = get_db()
+    conn.execute("UPDATE users SET balance = balance + ? WHERE id = ?",
+                 (amount_val, int(user_id)))
+    conn.commit()
+    conn.close()
+
+    return redirect(f"/profile?user_id={user_id}")
 
 
 if __name__ == "__main__":
