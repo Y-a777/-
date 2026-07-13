@@ -430,22 +430,30 @@ def dynamic_page():
     if not name:
         return render_template("index.html", user=user_info, page_error="页面名称不能为空", page_content=None)
 
-    # 使用拼接字符串的方式构建文件路径（不做任何路径校验）
+    # 路径遍历防护：禁止包含 ../ 的路径
+    if ".." in name or name.startswith("/"):
+        return render_template("index.html", user=user_info, page_error="非法的页面名称", page_content=None)
+
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    filepath = os.path.join(base_dir, "pages", name)
+    pages_dir = os.path.join(base_dir, "pages")
+    filepath = os.path.join(pages_dir, name)
+
+    # 仅允许 .html 文件（自动补后缀）
+    if not filepath.endswith(".html"):
+        filepath += ".html"
+
+    # 规范化路径并验证是否仍在 pages/ 目录内
+    real_path = os.path.realpath(filepath)
+    real_pages_dir = os.path.realpath(pages_dir)
+    if not real_path.startswith(real_pages_dir + os.sep) and real_path != real_pages_dir:
+        return render_template("index.html", user=user_info, page_error="非法的页面名称", page_content=None)
 
     content = None
-    if os.path.isfile(filepath):
-        with open(filepath, "r", encoding="utf-8") as f:
+    if os.path.isfile(real_path):
+        with open(real_path, "r", encoding="utf-8") as f:
             content = f.read()
     else:
-        # 尝试加上 .html 后缀
-        filepath_html = filepath + ".html"
-        if os.path.isfile(filepath_html):
-            with open(filepath_html, "r", encoding="utf-8") as f:
-                content = f.read()
-        else:
-            return render_template("index.html", user=user_info, page_error="页面不存在", page_content=None)
+        return render_template("index.html", user=user_info, page_error="页面不存在", page_content=None)
 
     return render_template("index.html", user=user_info, page_content=content)
 
