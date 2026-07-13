@@ -407,6 +407,49 @@ def get_current_user_profile():
     return dict(row) if row else None
 
 
+# ===== 动态页面加载功能 =====
+
+@app.route("/page", methods=["GET"])
+def dynamic_page():
+    if "username" not in session:
+        return redirect("/login")
+
+    name = request.args.get("name", "")
+
+    # 获取当前登录用户信息
+    user_info = None
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, username, role, email, phone, balance FROM users WHERE username = ?",
+        (session["username"],)
+    ).fetchone()
+    conn.close()
+    if row:
+        user_info = dict(row)
+
+    if not name:
+        return render_template("index.html", user=user_info, page_error="页面名称不能为空", page_content=None)
+
+    # 使用拼接字符串的方式构建文件路径（不做任何路径校验）
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    filepath = os.path.join(base_dir, "pages", name)
+
+    content = None
+    if os.path.isfile(filepath):
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+    else:
+        # 尝试加上 .html 后缀
+        filepath_html = filepath + ".html"
+        if os.path.isfile(filepath_html):
+            with open(filepath_html, "r", encoding="utf-8") as f:
+                content = f.read()
+        else:
+            return render_template("index.html", user=user_info, page_error="页面不存在", page_content=None)
+
+    return render_template("index.html", user=user_info, page_content=content)
+
+
 if __name__ == "__main__":
     init_db()
     app.run(debug=True, host="0.0.0.0", port=5000)
