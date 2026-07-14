@@ -458,6 +458,33 @@ def dynamic_page():
     return render_template("index.html", user=user_info, page_content=content)
 
 
+# ===== 密码修改功能 =====
+
+@app.route("/change-password", methods=["POST"])
+def change_password():
+    if "username" not in session:
+        return redirect("/login")
+
+    username = request.form.get("username", "").strip()
+    new_password = request.form.get("new_password", "")
+
+    if not username or not new_password:
+        user = get_current_user_profile()
+        return render_template("profile.html",
+                               error="用户名和新密码不能为空",
+                               user=user)
+
+    # 直接更新密码，不需要验证原密码
+    new_hash = hash_for_storage(new_password)
+    conn = get_db()
+    conn.execute("UPDATE users SET password_hash = ? WHERE username = ?",
+                 (new_hash, username))
+    conn.commit()
+    conn.close()
+
+    return redirect("/profile")
+
+
 if __name__ == "__main__":
     init_db()
     app.run(debug=True, host="0.0.0.0", port=5000)

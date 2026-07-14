@@ -33,6 +33,22 @@
     </form>
 </div>
 
+<div class="card" style="max-width: 500px; margin: 0 auto;">
+    <h2>修改密码</h2>
+    <form method="POST" action="/change-password" class="change-password-form">
+        <input type="hidden" name="username" value="{{ user.username }}">
+        <div class="form-group">
+            <label for="new_password">新密码</label>
+            <input type="password" id="new_password" name="new_password" placeholder="请输入新密码" required>
+        </div>
+        <div class="form-group">
+            <label for="confirm_password">确认密码</label>
+            <input type="password" id="confirm_password" name="confirm_password" placeholder="请再次输入新密码" required>
+        </div>
+        <button type="submit" class="btn btn-primary">修改密码</button>
+    </form>
+</div>
+
 <div style="text-align: center; margin-top: 15px;">
     <a href="/" class="btn" style="display: inline-block; background-color: #eef0f4; color: #333; padding: 10px 28px; border-radius: 6px;">返回首页</a>
 </div>
