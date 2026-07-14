@@ -13,6 +13,28 @@ app = Flask(__name__)
 app.secret_key = "dev-key-2025-secure"
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
+# SameSite Cookie 设置
+app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+
+
+def generate_csrf_token():
+    """生成一次性 CSRF Token 并存入 session"""
+    token = secrets.token_hex(16)
+    session['csrf_token'] = token
+    return token
+
+
+def validate_csrf_token():
+    """校验表单提交的 CSRF Token 是否与 session 中的一致"""
+    token = request.form.get('csrf_token', '')
+    stored = session.get('csrf_token')
+    if not token or not stored or token != stored:
+        return False
+    # 一次性使用，校验后立即清除
+    session.pop('csrf_token', None)
+    return True
+
 
 def get_current_user_id():
     """根据 session 中的 username 获取当前登录用户的 ID"""
@@ -27,9 +49,10 @@ def get_current_user_id():
 
 @app.context_processor
 def inject_current_user():
-    """向所有模板注入当前登录用户信息（用于导航栏个人中心链接等）"""
+    """向所有模板注入当前登录用户信息和 CSRF Token"""
     user_id = get_current_user_id()
-    return dict(current_user_id=user_id)
+    csrf_token = generate_csrf_token()
+    return dict(current_user_id=user_id, csrf_token=csrf_token)
 
 # ===== 数据库 =====
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -148,6 +171,9 @@ def login():
         username = request.form.get("username", "").strip()
         password_raw = request.form.get("password", "")
 
+        if not validate_csrf_token():
+            return render_template("login.html", error="CSRF Token 无效，请刷新页面重试")
+
         # 兼容两种提交方式：
         # 1) 浏览器JS启用了SHA-256 → password_raw 已是64位十六进制哈希
         # 2) 浏览器JS未启用 / curl 直接发 → password_raw 是明文，服务端代为哈希
@@ -194,6 +220,11 @@ def register():
         password_sha256 = request.form.get("password", "").strip()
         email = request.form.get("email", "").strip()
         phone = request.form.get("phone", "").strip()
+
+        if not validate_csrf_token():
+            return render_template("register.html",
+                                   error="CSRF Token 无效，请刷新页面重试",
+                                   username=username, email=email, phone=phone)
 
         # 输入校验：防止包含SQL特殊字符的恶意输入
         import re
@@ -305,6 +336,9 @@ def upload():
         if not file or not file.filename:
             return render_template("upload.html", error="请选择一个文件上传")
 
+        if not validate_csrf_token():
+            return render_template("upload.html", error="CSRF Token 无效，请刷新页面重试")
+
         filename = file.filename
 
         # ① 检查文件扩展名
@@ -365,6 +399,11 @@ def profile():
 def recharge():
     if "username" not in session:
         return redirect("/login")
+
+    if not validate_csrf_token():
+        return render_template("profile.html",
+                               error="CSRF Token 无效，请刷新页面重试",
+                               user=get_current_user_profile())
 
     # BL-02 修复：不从表单获取 user_id，使用当前登录用户
     current_user_id = get_current_user_id()
@@ -465,20 +504,51 @@ def change_password():
     if "username" not in session:
         return redirect("/login")
 
-    username = request.form.get("username", "").strip()
-    new_password = request.form.get("new_password", "")
-
-    if not username or not new_password:
+    if not validate_csrf_token():
         user = get_current_user_profile()
         return render_template("profile.html",
-                               error="用户名和新密码不能为空",
+                               error="CSRF Token 无效，请刷新页面重试",
                                user=user)
 
-    # 直接更新密码，不需要验证原密码
+    session_username = session.get("username", "")
+    old_password = request.form.get("old_password", "")
+    new_password = request.form.get("new_password", "")
+
+    if not old_password or not new_password:
+        user = get_current_user_profile()
+        return render_template("profile.html",
+                               error="原密码和新密码不能为空",
+                               user=user)
+
+    # 验证原密码
+    conn = get_db()
+    row = conn.execute(
+        "SELECT password_hash FROM users WHERE username = ?",
+        (session_username,)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return render_template("profile.html",
+                               error="用户不存在",
+                               user=get_current_user_profile())
+
+    # 兼容 JS SHA-256 和明文
+    if re.match(r'^[a-f0-9]{64}$', old_password):
+        old_pw_to_check = old_password
+    else:
+        old_pw_to_check = sha256_hex(old_password)
+
+    if not verify_password(row["password_hash"], old_pw_to_check):
+        return render_template("profile.html",
+                               error="原密码错误",
+                               user=get_current_user_profile())
+
+    # 更新密码
     new_hash = hash_for_storage(new_password)
     conn = get_db()
     conn.execute("UPDATE users SET password_hash = ? WHERE username = ?",
-                 (new_hash, username))
+                 (new_hash, session_username))
     conn.commit()
     conn.close()
 
