@@ -84,6 +84,39 @@
     {% endif %}
 </div>
 
+<!-- URL 抓取功能 -->
+<div class="card">
+    <h2>URL 抓取</h2>
+    <form method="POST" action="/fetch-url" class="fetch-url-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="search-box">
+            <input type="text" name="url" value="{{ url or '' }}"
+                   placeholder="输入要抓取的 URL..." class="search-input" required>
+            <button type="submit" class="btn btn-primary">抓取</button>
+        </div>
+    </form>
+
+    {% if fetch_result %}
+    <div style="margin-top: 20px;">
+        <div class="user-info" style="margin-bottom: 10px;">
+            <p><span class="info-label">状态码：</span>
+                {% if fetch_result.error %}
+                <span style="color: #d63031;">{{ fetch_result.status }}</span>
+                {% else %}
+                <span style="color: #2e7d32;">{{ fetch_result.status }}</span>
+                {% endif %}
+            </p>
+        </div>
+        <div class="fetch-content-box">
+            <pre style="white-space: pre-wrap; word-break: break-all; font-size: 12px; line-height: 1.5; color: #333; max-height: 400px; overflow-y: auto;">{{ fetch_result.content }}</pre>
+            {% if fetch_result.truncated %}
+            <p style="color: #888; font-size: 12px; margin-top: 8px;">* 内容已截断，仅显示前 5000 字符</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
 {% else %}
 <div class="card">
     <h2>请先登录</h2>

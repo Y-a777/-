@@ -8,6 +8,8 @@ import secrets
 import string
 import os
 import uuid
+import urllib.request
+import urllib.error
 
 app = Flask(__name__)
 app.secret_key = "dev-key-2025-secure"
@@ -553,6 +555,42 @@ def change_password():
     conn.close()
 
     return redirect("/profile")
+
+
+# ===== URL 抓取功能 =====
+
+@app.route("/fetch-url", methods=["POST"])
+def fetch_url():
+    if "username" not in session:
+        return redirect("/login")
+
+    target_url = request.form.get("url", "").strip()
+
+    if not target_url:
+        return render_template("index.html",
+                               fetch_result=None,
+                               user=get_current_user_profile())
+
+    result = {}
+    try:
+        req = urllib.request.Request(target_url)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            result["status"] = response.getcode()
+            content = response.read().decode("utf-8", errors="replace")
+            result["content"] = content[:5000]
+            result["truncated"] = len(content) > 5000
+    except urllib.error.HTTPError as e:
+        result["status"] = e.code
+        result["content"] = str(e)
+        result["error"] = True
+    except Exception as e:
+        result["status"] = "错误"
+        result["content"] = str(e)
+        result["error"] = True
+
+    return render_template("index.html",
+                           fetch_result=result,
+                           user=get_current_user_profile())
 
 
 if __name__ == "__main__":
