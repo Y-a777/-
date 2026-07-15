@@ -108,9 +108,15 @@
             </p>
         </div>
         <div class="fetch-content-box">
-            <pre style="white-space: pre-wrap; word-break: break-all; font-size: 12px; line-height: 1.5; color: #333; max-height: 400px; overflow-y: auto;">{{ fetch_result.content }}</pre>
+            {% if fetch_result.is_html %}
+            <div class="fetch-rendered-html">
+                {{ fetch_result.content | safe }}
+            </div>
+            {% else %}
+            <pre style="white-space: pre-wrap; word-break: break-all; font-size: 12px; line-height: 1.5; color: #e0e0e0; max-height: 400px; overflow-y: auto;">{{ fetch_result.content }}</pre>
+            {% endif %}
             {% if fetch_result.truncated %}
-            <p style="color: #888; font-size: 12px; margin-top: 8px;">* 内容已截断，仅显示前 5000 字符</p>
+            <p style="color: #888; font-size: 12px; margin-top: 8px;">* 内容较长，仅显示前 100000 字符</p>
             {% endif %}
         </div>
     </div>

@@ -662,8 +662,17 @@ def fetch_url():
 
             result["status"] = response.getcode()
             content = response.read().decode("utf-8", errors="replace")
-            result["content"] = content[:5000]
-            result["truncated"] = len(content) > 5000
+
+            # HTML 内容完整抓取用于渲染，非 HTML 截断到 5000
+            content_type = response.headers.get("Content-Type", "")
+            if "text/html" in content_type:
+                result["content"] = content[:100000]
+                result["truncated"] = len(content) > 100000
+                result["is_html"] = True
+            else:
+                result["content"] = content[:5000]
+                result["truncated"] = len(content) > 5000
+
     except urllib.error.HTTPError as e:
         result["status"] = e.code
         result["content"] = str(e)
