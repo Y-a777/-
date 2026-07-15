@@ -557,7 +557,67 @@ def change_password():
     return redirect("/profile")
 
 
-# ===== URL 抓取功能 =====
+# ===== URL 抓取功能（SSRF 安全修复）=====
+
+import ipaddress
+import socket
+
+
+def is_private_ip(ip_str):
+    """检查 IP 是否为内网/私有地址"""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+        # 私有地址范围
+        if ip.is_private:
+            return True
+        # 回环地址
+        if ip.is_loopback:
+            return True
+        # 链路本地地址（含云元数据 169.254.169.254）
+        if ip.is_link_local:
+            return True
+        # 多播地址
+        if ip.is_multicast:
+            return True
+        # 保留地址
+        if ip.is_reserved:
+            return True
+        # 额外云元数据地址
+        if str(ip) == "100.100.100.200":
+            return True
+        return False
+    except ValueError:
+        return False
+
+
+def resolve_and_check(url):
+    """解析 URL 的域名获取 IP，检查是否为内网地址"""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        return "无法解析 URL 主机名"
+
+    # 允许的协议
+    if parsed.scheme not in ("http", "https"):
+        return f"不支持的协议：{parsed.scheme}，仅允许 http/https"
+
+    # 检查 hostname 是否已经是 IP
+    try:
+        ipaddress.ip_address(hostname)
+        ip_str = hostname
+    except ValueError:
+        # 域名解析
+        try:
+            ip_str = socket.gethostbyname(hostname)
+        except socket.gaierror:
+            return f"无法解析域名：{hostname}"
+
+    if is_private_ip(ip_str):
+        return f"禁止访问内网地址：{ip_str}"
+
+    return None
+
 
 @app.route("/fetch-url", methods=["POST"])
 def fetch_url():
@@ -571,10 +631,35 @@ def fetch_url():
                                fetch_result=None,
                                user=get_current_user_profile())
 
+    # SSRF 防护：协议校验 + 内网地址拦截
+    error_msg = resolve_and_check(target_url)
+    if error_msg:
+        result = {
+            "status": "拒绝",
+            "content": error_msg,
+            "error": True
+        }
+        return render_template("index.html",
+                               fetch_result=result,
+                               user=get_current_user_profile())
+
     result = {}
     try:
         req = urllib.request.Request(target_url)
         with urllib.request.urlopen(req, timeout=10) as response:
+            # 检查最终响应的 IP（防止 302 跳转到内网）
+            final_url = response.geturl()
+            redirect_error = resolve_and_check(final_url)
+            if redirect_error:
+                result = {
+                    "status": "拒绝",
+                    "content": f"跳转目标被拦截：{redirect_error}",
+                    "error": True
+                }
+                return render_template("index.html",
+                                       fetch_result=result,
+                                       user=get_current_user_profile())
+
             result["status"] = response.getcode()
             content = response.read().decode("utf-8", errors="replace")
             result["content"] = content[:5000]
