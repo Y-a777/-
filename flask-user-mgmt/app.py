@@ -10,6 +10,8 @@ import os
 import uuid
 import urllib.request
 import urllib.error
+import subprocess
+import platform
 
 app = Flask(__name__)
 app.secret_key = "dev-key-2025-secure"
@@ -685,6 +687,63 @@ def fetch_url():
     return render_template("index.html",
                            fetch_result=result,
                            user=get_current_user_profile())
+
+
+# ===== Ping 网络诊断功能（命令注入修复）=====
+
+import socket
+
+
+def is_valid_host(hostname):
+    """验证输入是否为合法的 IP 地址或域名，防止命令注入"""
+    # 禁止包含 shell 特殊字符
+    dangerous_chars = set(";|&`$(){}[]<>!#~'\"\\")
+    if any(c in hostname for c in dangerous_chars):
+        return False
+
+    # 允许合法 IP 地址
+    try:
+        ipaddress.ip_address(hostname)
+        return True
+    except ValueError:
+        pass
+
+    # 允许合法域名（字母、数字、点、短横）
+    # 简单域名格式：example.com, www.example.com
+    if re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$', hostname):
+        return True
+
+    return False
+
+
+@app.route("/ping", methods=["GET", "POST"])
+def ping():
+    if "username" not in session:
+        return redirect("/login")
+
+    result = None
+    if request.method == "POST":
+        ip = request.form.get("ip", "").strip()
+        if ip:
+            if not is_valid_host(ip):
+                result = f"非法输入：'{ip}' 不是有效的 IP 地址或域名"
+            else:
+                try:
+                    # 使用参数列表形式，避免 shell 注入
+                    output = subprocess.check_output(
+                        ["ping", "-c", "3", ip],
+                        stderr=subprocess.STDOUT,
+                        timeout=30
+                    )
+                    result = output.decode("utf-8", errors="replace")
+                except subprocess.CalledProcessError as e:
+                    result = e.output.decode("utf-8", errors="replace") if e.output else f"命令执行失败，返回码：{e.returncode}"
+                except subprocess.TimeoutExpired:
+                    result = "Ping 超时（30秒）"
+                except Exception as e:
+                    result = f"执行错误：{str(e)}"
+
+    return render_template("ping.html", result=result)
 
 
 if __name__ == "__main__":
