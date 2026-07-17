@@ -306,3 +306,39 @@ ul {
     white-space: pre-wrap;
     word-break: break-all;
 }
+
+/* ===== XML Import ===== */
+.xml-textarea {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-family: 'Courier New', monospace;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    outline: none;
+    resize: vertical;
+    transition: border-color 0.2s;
+}
+
+.xml-textarea:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.xml-result-box {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 20px;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.xml-result-box pre {
+    margin: 0;
+    color: #00ff00;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+}

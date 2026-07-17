@@ -3,6 +3,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import sqlite3
 import re
+import json
 import hashlib
 import secrets
 import string
@@ -744,6 +745,102 @@ def ping():
                     result = f"执行错误：{str(e)}"
 
     return render_template("ping.html", result=result)
+
+
+# ===== XML 数据导入功能（XXE 安全修复）=====
+
+# 允许 XML SYSTEM 实体读取的目录白名单
+ALLOWED_XML_READ_DIRS = [
+    os.path.realpath(BASE_DIR),                          # 项目根目录
+    os.path.realpath(os.path.join(BASE_DIR, 'pages')),   # pages 目录
+    os.path.realpath(os.path.join(BASE_DIR, 'data')),    # data 目录
+]
+
+# 最大文件读取大小（4KB）
+MAX_XML_FILE_READ = 4096
+
+
+def is_allowed_xml_path(filepath):
+    """验证文件路径是否在白名单目录内，防止路径遍历"""
+    # 如果是相对路径，基于 BASE_DIR 解析
+    if not os.path.isabs(filepath):
+        filepath = os.path.join(BASE_DIR, filepath)
+    real_path = os.path.realpath(filepath)
+    for allowed_dir in ALLOWED_XML_READ_DIRS:
+        if real_path.startswith(allowed_dir + os.sep) or real_path == allowed_dir:
+            # 限制文件大小（已在调用处限制）
+            return True
+    return False
+
+
+@app.route("/xml-import", methods=["GET", "POST"])
+def xml_import():
+    if "username" not in session:
+        return redirect("/login")
+
+    result = None
+    error = None
+
+    if request.method == "POST":
+        xml_data = request.form.get("xml_data", "").strip()
+        if xml_data:
+            try:
+                import xml.etree.ElementTree as ET
+
+                # 检查 XML 中的 <!ENTITY 和 SYSTEM 定义
+                entity_pattern = re.compile(r'<!ENTITY\s+\S+\s+SYSTEM\s+"([^"]+)"')
+                system_files = entity_pattern.findall(xml_data)
+
+                # 读取 SYSTEM 引用的文件内容（仅限白名单目录内，限制文件大小）
+                file_contents = {}
+                for filepath in system_files:
+                    if not is_allowed_xml_path(filepath):
+                        file_contents[filepath] = f"禁止读取文件（不在允许的目录范围内）"
+                    else:
+                        try:
+                            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                                file_contents[filepath] = f.read(MAX_XML_FILE_READ)
+                        except FileNotFoundError:
+                            file_contents[filepath] = "文件不存在"
+                        except PermissionError:
+                            file_contents[filepath] = "无权限读取文件"
+                        except Exception as e:
+                            file_contents[filepath] = f"读取失败：{str(e)}"
+
+                # 替换 XML 中的实体引用（先处理，再安全解析）
+                for filepath, content in file_contents.items():
+                    entity_match = re.search(r'<!ENTITY\s+(\S+)\s+SYSTEM\s+"' + re.escape(filepath) + r'"', xml_data)
+                    if entity_match:
+                        entity_name = entity_match.group(1)
+                        xml_data = xml_data.replace(f"&{entity_name};", content)
+
+                # 移除 DOCTYPE 声明，防止解析器接触外部实体
+                xml_data = re.sub(r'<!DOCTYPE\s+\S+\s*\[.*?\]\s*>', '', xml_data, flags=re.DOTALL)
+                xml_data = re.sub(r'<!DOCTYPE\s+\S+\s*>', '', xml_data)
+
+                # 限制 XML 数据总大小（防止 Billion Laughs 内存耗尽）
+                if len(xml_data) > 500000:
+                    error = "XML 数据过大（超过 500KB）"
+                    return render_template("xml_import.html", result=result, error=error)
+
+                # 使用安全配置的解析器
+                parser = ET.XMLParser()
+                root = ET.fromstring(xml_data, parser=parser)
+
+                users = []
+                for user_elem in root.findall(".//user"):
+                    name = user_elem.findtext("name", "")
+                    email = user_elem.findtext("email", "")
+                    users.append({"name": name, "email": email})
+
+                result = json.dumps({"users": users, "files_read": system_files}, ensure_ascii=False, indent=2)
+
+            except ET.ParseError as e:
+                error = f"XML 解析错误：{str(e)}"
+            except Exception as e:
+                error = f"处理错误：{str(e)}"
+
+    return render_template("xml_import.html", result=result, error=error)
 
 
 if __name__ == "__main__":

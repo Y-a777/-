@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width: 700px; margin: 0 auto;">
+    <h2>XML 数据导入</h2>
+    <form method="POST" action="/xml-import" class="xml-import-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="form-group">
+            <label for="xml_data">输入 XML 数据</label>
+            <textarea id="xml_data" name="xml_data" rows="12" class="xml-textarea"
+                      placeholder='<?xml version="1.0" encoding="UTF-8"?>
+&lt;!DOCTYPE foo [
+  &lt;!ENTITY xxe SYSTEM "/etc/passwd"&gt;
+]>
+&lt;root&gt;
+  &lt;user&gt;
+    &lt;name&gt;admin&lt;/name&gt;
+    &lt;email&gt;admin@example.com&lt;/email&gt;
+  &lt;/user&gt;
+&lt;/root&gt;' required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">导 入</button>
+    </form>
+
+    {% if error %}
+    <div style="margin-top: 20px;">
+        <div class="error-message">{{ error }}</div>
+    </div>
+    {% endif %}
+
+    {% if result %}
+    <div style="margin-top: 20px;">
+        <div class="xml-result-box">
+            <pre>{{ result }}</pre>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
